@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atlas Guide - Accessible Navigation Prototype</title>
+    <!-- Load Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define a custom font family for system consistency */
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #121212; /* Match BACKGROUND_BASE */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        /* Custom scrollbar for better visual accessibility */
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 8px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background-color: #007AFF;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<!-- 1. Load React and ReactDOM (Must load first) -->
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<!-- 2. Load Babel for JSX Transpilation (Load last before your code) -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+
+    // Define the main application start function
+    const startApp = () => {
+        // We only rely on standard React and ReactDOM to be defined
+        if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+            console.error("Critical React libraries not loaded. Retrying start...");
+            setTimeout(startApp, 100);
+            return;
+        }
+
+        const { useState, useEffect } = React;
+
+        // --- LUCIDE ICON REPLACEMENT (EMOJI PLACEHOLDERS) ---
+        // This is the functional replacement for the external Lucide components
+        const IconMap = {
+            Shield: '🛡️', Volume2: '🔊', Settings: '⚙️', Compass: '🧭', Camera: '📷', Zap: '⚡',
+            CheckCircle: '✅', XCircle: '❌', Bookmark: '🔖', Users: '👥', Bell: '🔔',
+            Phone: '📞', MapPin: '📍', ChevronLeft: 'ᐸ', Search: '🔍', Navigation: '🗺️',
+            Minimize2: '➖', Maximize2: '➕', User: '👤', Lock: '🔒', HelpCircle: '❓',
+            BookOpen: '📖', CreditCard: '💳', HardDrive: '💾', Eye: '👁️'
+        };
+
+        const LucideIcon = ({ iconName, size, style, className }) => {
+            const visual = IconMap[iconName] || '⚠️';
+
+            return (
+                <span className={className} style={{ fontSize: `${size}px`, ...style }} role="img" aria-label={`Icon: ${iconName}`}>
+                    {visual}
+                </span>
+            );
+        };
+
+        // Helper function to call the custom icon component using string names
+        const IconWrapper = (iconName, props) => <LucideIcon iconName={iconName} {...props} />;
+
+
+        // --- CONFIGURATION CONSTANTS ---
+        const COLORS = {
+            BACKGROUND_BASE: '#121212',
+            BACKGROUND_CARD: '#1A1E2A',
+            PRIMARY_TEXT: '#FFFFFF',
+            ACCENT_BLUE: '#007AFF',
+            MUTED_GREY: '#A8A8A8',
+            ALERT_RED: '#FF4545',
+        };
+
+        // --- SHARED COMPONENTS ---
+
+        const StatusBar = () => (
+            <div className="flex justify-between items-center px-6 py-2 w-full text-xs font-semibold" style={{ color: COLORS.PRIMARY_TEXT, backgroundColor: 'transparent' }}>
+                <span>9:41</span>
+                <div className="flex items-center space-x-1">
+                    <span style={{ color: COLORS.ACCENT_BLUE }}>AT&T</span>
+                    <div className="w-5 h-2 border border-white rounded-sm">
+                        <div className="w-4 h-1 bg-white ml-auto mt-0.5 rounded-sm"></div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const BackButton = ({ onClick }) => (
+            <button
+                className="absolute left-4 top-4 p-3 rounded-full transition-opacity duration-200 active:opacity-70 z-10"
+                onClick={onClick}
+                style={{ color: COLORS.PRIMARY_TEXT, backgroundColor: COLORS.BACKGROUND_CARD }}
+                aria-label="Back to previous screen"
+            >
+                {IconWrapper('ChevronLeft', { size: 24 })}
+            </button>
+        );
+
+        const SettingsToggleCard = ({ label, defaultChecked }) => {
+            const [isChecked, setIsChecked] = useState(defaultChecked);
+
+            const toggle = () => {
+                setIsChecked(!isChecked);
+                if (navigator.vibrate) navigator.vibrate(30);
+                alert(`${label} is now ${!isChecked ? 'On' : 'Off'}.`);
+            };
+
+            return (
+                <div
+                    className="flex justify-between items-center p-6 rounded-xl cursor-pointer transition-all duration-200"
+                    style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 4px 8px rgba(0, 0, 0, 0.4)` }}
+                    onClick={toggle}
+                    role="switch"
+                    aria-checked={isChecked}
+                    aria-label={label}
+                >
+                    <span className="text-xl font-medium" style={{ color: COLORS.PRIMARY_TEXT }}>{label}</span>
+                    <div
+                        className={`w-16 h-10 flex items-center rounded-full p-1 transition-colors duration-300`}
+                        style={{ backgroundColor: isChecked ? COLORS.ACCENT_BLUE : COLORS.MUTED_GREY }}
+                    >
+                        <div
+                            className={`bg-white w-8 h-8 rounded-full shadow-md transform transition-transform duration-300`}
+                            style={{ transform: isChecked ? 'translateX(80%)' : 'translateX(0)' }}
+                        ></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsLink = ({ label, icon: iconName, onClick }) => (
+            <button
+                className="w-full flex items-center justify-between p-6 rounded-xl transition-all duration-200 hover:opacity-80 active:scale-[0.99]"
+                style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.PRIMARY_TEXT, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}
+                onClick={onClick}
+                role="link"
+                aria-label={`Open ${label} settings`}
+            >
+                <div className="flex items-center space-x-4">
+                    {IconWrapper(iconName, { size: 28, style: { color: COLORS.ACCENT_BLUE } })}
+                    <span className="text-xl font-medium">{label}</span>
+                </div>
+                <span className="text-2xl font-extrabold" style={{ color: COLORS.MUTED_GREY }}>&gt;</span>
+            </button>
+        );
+
+        const EmergencyQuickButton = () => (
+            <button
+                className="w-full py-6 px-6 rounded-xl text-2xl font-bold transition-transform duration-150 active:scale-95 flex items-center justify-center space-x-4"
+                style={{ backgroundColor: COLORS.ALERT_RED, color: COLORS.PRIMARY_TEXT, boxShadow: `0 4px 12px rgba(255, 69, 69, 0.6)` }}
+                onClick={() => {
+                    alert('CRITICAL ALERT: Calling Emergency Contact... (Simulated). Audio confirmation given.');
+                    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+                }}
+                aria-label="Call Emergency Contact Immediately"
+            >
+                {IconWrapper('Shield', { size: 32 })}
+                <span>EMERGENCY CALL</span>
+            </button>
+        );
+
+        // --- TAB SCREENS ---
+
+        // 1. Navigator Home Screen
+        const NavigateMainScreen = ({ onStartPlanning }) => {
+            const destinations = [
+                { name: 'Home', address: '123 Oak St', time: '12 min walk' },
+                { name: 'Office', address: '456 Tech Ave', time: '25 min transit' },
+            ];
+
+            return (
+                <div className="p-5 space-y-8">
+                    <button
+                        className="w-full py-5 flex items-center justify-center rounded-xl space-x-4 transition-transform duration-150 active:scale-[0.99]"
+                        style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 4px 8px rgba(0, 0, 0, 0.4)` }}
+                        onClick={() => {
+                            alert('Text Search Activated. Use voice input or large keyboard.');
+                            if (navigator.vibrate) navigator.vibrate(20);
+                        }}
+                        aria-label="Search for destination by typing or speaking"
+                    >
+                        {IconWrapper('Search', { size: 28, style: { color: COLORS.ACCENT_BLUE } })}
+                        <span className="text-xl" style={{ color: COLORS.MUTED_GREY }}>Search destination...</span>
+                    </button>
+
+
+                    <button
+                        className="w-full h-48 flex flex-col items-center justify-center rounded-2xl transition-transform duration-150 active:scale-95 space-y-3"
+                        style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT, boxShadow: `0 10px 30px rgba(0, 122, 255, 0.5)` }}
+                        onClick={() => {
+                            alert('Voice Input Activated. Loud tone played. System waiting for command.');
+                            if (navigator.vibrate) navigator.vibrate(100);
+                            onStartPlanning();
+                        }}
+                        aria-label="Tap and speak destination to start navigation"
+                    >
+                        {IconWrapper('Volume2', { size: 64, className: 'animate-pulse' })}
+                        <span className="text-2xl font-bold">START VOICE COMMAND</span>
+                    </button>
+
+                    <div className="space-y-4">
+                        <h2 className="text-2xl font-semibold px-2" style={{ color: COLORS.PRIMARY_TEXT }}>Quick Access</h2>
+                        {destinations.map((dest, index) => (
+                            <button
+                                key={index}
+                                className="w-full p-5 rounded-xl flex justify-between items-center transition-all duration-200 hover:opacity-80 active:scale-[0.99]"
+                                style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}
+                                onClick={() => {
+                                    onStartPlanning();
+                                }}
+                                aria-label={`Maps to ${dest.name}, estimated time ${dest.time}`}
+                            >
+                                <div>
+                                    <p className="text-xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>{dest.name}</p>
+                                    <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>{dest.address}</p>
+                                </div>
+                                <span className="text-xl font-medium" style={{ color: COLORS.ACCENT_BLUE }}>{dest.time} &gt;</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. Route Planning Screen
+        const RoutePlanningScreen = ({ onStartActiveNavigation, onCancel }) => {
+
+            const destination = 'Library North Entrance';
+            const routeSummary = "The route is short, about 8 minutes. You will turn left onto Main Street where moderate traffic noise is expected for about 200 feet before crossing the street at a signaled intersection. The library entrance is directly ahead after the crossing.";
+            const routeSteps = [
+                { instruction: "Start: Exit building toward Main St.", distance: "0 feet" },
+                { instruction: "Turn LEFT onto Main Street.", distance: "200 feet" },
+                { instruction: "Cross pedestrian crossing at 1st Ave.", distance: "450 feet" },
+                { instruction: "Arrival: Library North Entrance.", distance: "600 feet" },
+            ];
+
+            return (
+                <div className="p-5 space-y-6 h-full flex flex-col">
+                    <h1 className="text-3xl font-bold" style={{ color: COLORS.PRIMARY_TEXT }}>Route: {destination} (600 ft)</h1>
+                    <p className="text-lg" style={{ color: COLORS.MUTED_GREY }}>Estimated Time: 8 min walk | Safety Alerts: 1</p>
+
+                    <div className="space-y-3">
+                        <div className="p-4 rounded-xl border-l-4" style={{ backgroundColor: COLORS.BACKGROUND_CARD, borderColor: COLORS.ACCENT_BLUE }}>
+                            <h3 className="text-lg font-bold flex items-center space-x-2" style={{ color: COLORS.ACCENT_BLUE }}>
+                                {IconWrapper('BookOpen', { size: 20 })} Narrative Summary:
+                            </h3>
+                            <p className="text-base mt-1" style={{ color: COLORS.PRIMARY_TEXT }}>{routeSummary}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 space-y-4 overflow-y-auto pt-4">
+                        <h2 className="text-2xl font-semibold" style={{ color: COLORS.ACCENT_BLUE }}>Review Steps (Swipe Down for Details)</h2>
+                        {routeSteps.map((step, index) => (
+                            <div key={index} className="p-5 rounded-xl" style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}>
+                                <p className="text-xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>{step.instruction}</p>
+                                <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>{step.distance}</p>
+                            </div>
+                        ))}
+
+                        <div className="p-5 rounded-xl border-2" style={{ backgroundColor: COLORS.ALERT_RED + '50', borderColor: COLORS.ALERT_RED }}>
+                            <p className="text-xl font-bold" style={{ color: COLORS.PRIMARY_TEXT }}>{IconWrapper('Bell', { size: 24, className: 'inline mr-3' })}CRITICAL ALERT:</p>
+                            <p className="text-base" style={{ color: COLORS.PRIMARY_TEXT }}>High volume street noise expected on Main St. for 2 blocks.</p>
+                        </div>
+                    </div>
+
+                    <div className="flex space-x-4 pt-4 flex-shrink-0">
+                        <button
+                            className="w-1/3 py-5 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                            style={{ backgroundColor: COLORS.MUTED_GREY, color: COLORS.PRIMARY_TEXT }}
+                            onClick={onCancel}
+                            aria-label="Cancel route planning"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="w-2/3 py-5 rounded-xl text-2xl font-bold transition-transform duration-150 active:scale-95"
+                            style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT, boxShadow: `0 4px 12px rgba(0, 122, 255, 0.4)` }}
+                            onClick={() => {
+                                onStartActiveNavigation();
+                                if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                            }}
+                            aria-label="Start active navigation guidance"
+                        >
+                            START GUIDANCE
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Active Navigation Screen
+        const ActiveNavigationScreen = ({ onEndTrip }) => {
+            const [instruction, setInstruction] = useState('Approaching intersection. Prepare to turn LEFT.');
+            const [distance, setDistance] = useState('200 feet');
+            const [step, setStep] = useState(1);
+            const [isEmergencyActive, setIsEmergencyActive] = useState(false);
+
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    if (step === 1) {
+                        setInstruction('Turn LEFT onto Main Street now. Landmark: Red mailbox on the corner.');
+                        setDistance('0 feet');
+                        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                        setStep(2);
+                    } else if (step === 2) {
+                        setInstruction('Proceed straight for 500 feet. You are safely on Main Street.');
+                        setDistance('500 feet');
+                        setStep(3);
+                    } else if (step === 3) {
+                        setInstruction('You have arrived at your destination (Library). The entrance is 10 feet to your right.');
+                        setDistance('Arrived');
+                        if (navigator.vibrate) navigator.vibrate([100, 100, 100, 100, 100]);
+                        setStep(4);
+                    }
+                }, 8000);
+
+                return () => clearTimeout(timer);
+            }, [step]);
+
+            const handleEmergencyToggle = () => {
+                setIsEmergencyActive(!isEmergencyActive);
+                if (navigator.vibrate) navigator.vibrate(200);
+                if (!isEmergencyActive) {
+                    alert('EMERGENCY MODE ACTIVATED: All voice instructions stopped. Calling emergency contact now. (Simulated)');
+                }
+            };
+
+            return (
+                <div className="p-5 flex flex-col justify-between h-full space-y-8">
+                    {/* CRITICAL INSTRUCTION AREA */}
+                    <div className="flex flex-col items-center justify-center p-6 rounded-2xl w-full text-center flex-1 space-y-6" style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 8px 20px rgba(0, 0, 0, 0.4)` }}>
+                        <p className="text-6xl font-extrabold tracking-wide" style={{ color: COLORS.PRIMARY_TEXT, transition: 'color 0.5s' }}>
+                            {distance === '0 feet' ? 'TURN NOW' : distance}
+                        </p>
+                        <h1 className="text-3xl font-semibold" style={{ color: COLORS.ACCENT_BLUE }}>
+                            {instruction}
+                        </h1>
+                    </div>
+
+                    {/* QUICK ACTION BUTTONS (MASSIVE TOUCH TARGETS) */}
+                    <div className="space-y-4 pb-20">
+                        <button
+                            className="w-full py-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95 flex items-center justify-center space-x-3"
+                            style={{ backgroundColor: COLORS.MUTED_GREY, color: COLORS.PRIMARY_TEXT }}
+                            onClick={() => {
+                                alert(`REPEATING: ${instruction}`);
+                                if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+                            }}
+                            aria-label="Repeat Last Instruction"
+                        >
+                            {IconWrapper('Volume2', { size: 28 })}
+                            <span>REPEAT INSTRUCTION</span>
+                        </button>
+                        <button
+                            className="w-full py-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95 flex items-center justify-center space-x-3"
+                            style={{ backgroundColor: isEmergencyActive ? COLORS.ALERT_RED : COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT }}
+                            onClick={handleEmergencyToggle}
+                            aria-label={isEmergencyActive ? "Deactivate Emergency Mode" : "Activate Emergency Mode"}
+                        >
+                            {IconWrapper('Shield', { size: 28 })}
+                            <span>{isEmergencyActive ? 'EMERGENCY ACTIVE' : 'ACTIVATE HELP'}</span>
+                        </button>
+
+                        {distance === 'Arrived' && (
+                            <button
+                                className="w-full py-6 rounded-xl text-2xl font-bold transition-transform duration-150 active:scale-95 mt-4"
+                                style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT, boxShadow: `0 4px 12px rgba(0, 122, 255, 0.4)` }}
+                                onClick={onEndTrip}
+                                aria-label="End Navigation Trip"
+                            >
+                                END TRIP
+                            </button>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Saved Destinations Screen
+        const SavedDestinationsScreen = () => {
+            const saved = [
+                { name: 'Home (Default)', icon: 'MapPin' },
+                { name: 'Work', icon: 'MapPin' },
+                { name: 'My Gym', icon: 'MapPin' },
+                { name: 'Dr. Smith\'s Office', icon: 'MapPin' },
+            ];
+
+            return (
+                <div className="p-5 space-y-6">
+                    <h1 className="text-3xl font-bold" style={{ color: COLORS.PRIMARY_TEXT }}>My Saved Places</h1>
+
+                    {saved.map((dest, index) => (
+                        <div
+                            key={index}
+                            className="p-5 rounded-xl flex items-center justify-between transition-all duration-200 hover:opacity-80 active:scale-[0.99] cursor-pointer"
+                            style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}
+                            onClick={() => {
+                                alert(`Viewing details for ${dest.name}... (Simulated)`);
+                                if (navigator.vibrate) navigator.vibrate(30);
+                            }}
+                            role="button"
+                            aria-label={`View or edit ${dest.name}`}
+                        >
+                            <div className="flex items-center space-x-4">
+                                {IconWrapper(dest.icon, { size: 28, style: { color: COLORS.ACCENT_BLUE } })}
+                                <span className="text-xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>{dest.name}</span>
+                            </div>
+                            <span className="text-xl" style={{ color: COLORS.MUTED_GREY }}>Edit &gt;</span>
+                        </div>
+                    ))}
+
+                    <button
+                        className="w-full py-5 mt-4 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                        style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT }}
+                        onClick={() => {
+                            alert('Opening new address entry form... (Simulated)');
+                            if (navigator.vibrate) navigator.vibrate(50);
+                        }}
+                    >
+                        + Add New Place
+                    </button>
+                </div>
+            );
+        };
+
+        // 5. Scan Screen (Camera Vision)
+        const ScanVisionScreen = () => {
+            const [zoom, setZoom] = useState(1);
+
+            const simulatedLlmResult = "The environment is an open area. Major landmark 5 feet ahead is a smooth, wide pillar. Critical: There is a bicycle rack directly to the left, 2 feet away, posing a trip hazard.";
+            const [llmResult, setLlmResult] = useState('');
+            const [isLoading, setIsLoading] = useState(false);
+
+            const runSimulatedScan = () => {
+                setIsLoading(true);
+                setLlmResult('');
+                if (navigator.vibrate) navigator.vibrate(100);
+
+                setTimeout(() => {
+                    setLlmResult(simulatedLlmResult);
+                    setIsLoading(false);
+                    alert('Vision scan complete. Result read aloud.');
+                }, 3000);
+            };
+
+            return (
+                <div className="p-5 flex flex-col items-center justify-center h-full space-y-8">
+                    <div
+                        className="w-full h-80 rounded-2xl flex items-center justify-center"
+                        style={{ backgroundColor: COLORS.BACKGROUND_CARD, border: `4px dashed ${COLORS.ACCENT_BLUE}` }}
+                        aria-label="Live camera view window for object recognition"
+                    >
+                        {IconWrapper('Camera', { size: 64, style: { color: COLORS.ACCENT_BLUE } })}
+                    </div>
+
+                    {/* Zoom Controls (Accessibility feature) */}
+                    <div className="flex space-x-4">
+                        <button
+                            className="p-4 rounded-full transition-transform duration-150 active:scale-95"
+                            style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.ACCENT_BLUE, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}
+                            onClick={() => { setZoom(z => Math.max(1, z - 1)); alert('Zoom Out (Simulated Haptic Feedback)'); if (navigator.vibrate) navigator.vibrate(30); }}
+                            aria-label="Zoom out camera view"
+                        >
+                            {IconWrapper('Minimize2', { size: 28 })}
+                        </button>
+                        <span className="text-2xl font-bold self-center" style={{ color: COLORS.PRIMARY_TEXT }}>Zoom {zoom}x</span>
+                        <button
+                            className="p-4 rounded-full transition-transform duration-150 active:scale-95"
+                            style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.ACCENT_BLUE, boxShadow: `0 2px 4px rgba(0, 0, 0, 0.3)` }}
+                            onClick={() => { setZoom(z => Math.min(4, z + 1)); alert('Zoom In (Simulated Haptic Feedback)'); if (navigator.vibrate) navigator.vibrate(30); }}
+                            aria-label="Zoom in camera view"
+                        >
+                            {IconWrapper('Maximize2', { size: 28 })}
+                        </button>
+                    </div>
+
+                    {/* Scan Button (Largest CTA on this screen) */}
+                    <button
+                        className="w-48 h-48 rounded-full flex flex-col items-center justify-center transition-transform duration-150 active:scale-90 space-y-2"
+                        style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT, boxShadow: `0 0 0 10px ${COLORS.ACCENT_BLUE}40` }}
+                        onClick={runSimulatedScan}
+                        disabled={isLoading}
+                        aria-label="Activate Vision Scan"
+                    >
+                        {IconWrapper('Zap', { size: 64 })}
+                        <span className="text-base font-bold">{isLoading ? 'ANALYZING...' : 'AI SCAN'}</span>
+                    </button>
+
+                    {/* Result Display */}
+                    <div className="text-center w-full p-2 rounded-xl" style={{ backgroundColor: COLORS.BACKGROUND_CARD }}>
+                        <h2 className="text-xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>Last Scan Result</h2>
+                        <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>
+                            {isLoading ? 'Processing environment data...' : llmResult || 'Tap the AI SCAN button to analyze the environment.'}
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        // 6. Settings Main Screen (Central Hub - 14 pages total)
+        const SettingsMainScreen = ({ onNavigate }) => (
+            <div className="p-5 space-y-6">
+                <SettingsLink label="User Profile & Privacy" icon={'Users'} onClick={() => onNavigate('profile')} />
+                <SettingsLink label="Safety & Emergency" icon={'Shield'} onClick={() => onNavigate('safety')} />
+                <SettingsLink label="Voice Guidance" icon={'Volume2'} onClick={() => onNavigate('verbosity')} />
+                <SettingsLink label="App Data & Storage" icon={'HardDrive'} onClick={() => onNavigate('data')} />
+                <SettingsLink label="Help & Support" icon={'HelpCircle'} onClick={() => onNavigate('help')} />
+                <SettingsLink label="Manage Contacts" icon={'Phone'} onClick={() => onNavigate('emergency')} />
+            </div>
+        );
+
+        // 7. User Profile Screen
+        const ProfileScreen = ({ onBack, onNavigate }) => {
+            const userId = 'USER-ID-c_5287...-334'; // Simulated ID
+
+            return (
+                <div className="p-5 space-y-8">
+                    <BackButton onClick={onBack} />
+                    <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>User Profile</h1>
+
+                    <div className="flex flex-col items-center space-y-4 p-8 rounded-xl" style={{ backgroundColor: COLORS.BACKGROUND_CARD, boxShadow: `0 0 10px ${COLORS.ACCENT_BLUE}20` }}>
+                        <div
+                            className="w-28 h-28 rounded-full flex items-center justify-center text-6xl font-bold border-4"
+                            style={{
+                                backgroundColor: COLORS.ACCENT_BLUE,
+                                color: COLORS.PRIMARY_TEXT,
+                                borderColor: COLORS.ACCENT_BLUE + '60',
+                                boxShadow: `inset 0 0 10px ${COLORS.BACKGROUND_BASE}`
+                            }}
+                        >
+                            J
+                        </div>
+                        <h2 className="text-2xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>Jane Doe</h2>
+
+                        <div
+                            className="py-1 px-3 rounded-full text-xs font-mono tracking-wider"
+                            style={{ backgroundColor: COLORS.BACKGROUND_BASE, color: COLORS.MUTED_GREY, border: `1px solid ${COLORS.MUTED_GREY}` }}
+                        >
+                            User ID: {userId}
+                        </div>
+
+                    </div>
+
+                    <SettingsLink label="Accessibility Preferences" icon={'Settings'}
+                        onClick={() => alert('Opening detailed accessibility settings... (Simulated)')} />
+
+                    <SettingsLink label="Privacy Settings" icon={'Eye'}
+                        onClick={() => onNavigate('privacy')} />
+
+                    <SettingsLink label="Account Security" icon={'Lock'}
+                        onClick={() => alert('Opening security settings panel... (Simulated)')} />
+                </div>
+            );
+        };
+
+        // 8. Privacy Settings Screen (NEW PAGE)
+        const PrivacySettingsScreen = ({ onBack }) => (
+            <div className="p-5 space-y-6">
+                <BackButton onClick={onBack} />
+                <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Privacy Settings</h1>
+
+                <p className="text-lg" style={{ color: COLORS.MUTED_GREY }}>Control how your location and usage data is shared.</p>
+
+                <SettingsToggleCard label="Share Anonymized Route Data" defaultChecked={true} />
+                <SettingsToggleCard label="Location History Logging" defaultChecked={true} />
+                <SettingsToggleCard label="Targeted Accessibility Prompts" defaultChecked={false} />
+
+                <button
+                    className="w-full py-5 mt-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                    style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.ALERT_RED }}
+                    onClick={() => alert('Permanently clearing all data... (Simulated)')}
+                >
+                    Clear All App Data
+                </button>
+            </div>
+        );
+
+
+        // 9. Safety & Emergency Screen
+        const SafetySettingsScreen = ({ onBack }) => (
+            <div className="p-5 space-y-6">
+                <BackButton onClick={onBack} />
+                <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Safety & Emergency</h1>
+
+                <SettingsToggleCard label="Obstacle Detection" defaultChecked={true} />
+                <SettingsToggleCard label="Fall Detection Alert" defaultChecked={false} />
+                <SettingsToggleCard label="High Volume Sound Warning" defaultChecked={true} />
+
+                <div className="pt-4">
+                    <h2 className="text-2xl font-semibold mb-3" style={{ color: COLORS.PRIMARY_TEXT }}>Emergency Action</h2>
+                    <EmergencyQuickButton />
+                </div>
+            </div>
+        );
+
+        // 10. Voice Guidance Screen
+        const GuidanceVerbosityScreen = ({ onBack }) => {
+            const [level, setLevel] = useState(2);
+
+            const updateLevel = (newLevel) => {
+                setLevel(newLevel);
+                if (navigator.vibrate) navigator.vibrate(50);
+            };
+
+            const verbosityText = {
+                1: 'Concise (Critical steps only)',
+                2: 'Standard (Turns, landmarks, distance)',
+                3: 'Detailed (Max context, safety, environment)',
+            };
+
+            return (
+                <div className="p-5 space-y-6">
+                    <BackButton onClick={onBack} />
+                    <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Voice Guidance Settings</h1>
+
+                    <SettingsToggleCard label="Voice Guidance On/Off" defaultChecked={true} />
+                    <SettingsToggleCard label="Vibration Feedback" defaultChecked={true} />
+
+                    <div className="p-6 rounded-xl space-y-4 mt-4" style={{ backgroundColor: COLORS.BACKGROUND_CARD }}>
+                        <h2 className="text-2xl font-medium" style={{ color: COLORS.PRIMARY_TEXT }}>Guidance Detail Level</h2>
+                        <p className="text-lg" style={{ color: COLORS.MUTED_GREY }}>{verbosityText[level]}</p>
+                        <div className="flex justify-between items-center pt-3">
+                            {[1, 2, 3].map(i => (
+                                <button
+                                    key={i}
+                                    className={`py-4 px-6 rounded-xl font-semibold transition-colors duration-200 text-xl`}
+                                    style={{
+                                        backgroundColor: i === level ? COLORS.ACCENT_BLUE : 'transparent',
+                                        color: i === level ? COLORS.PRIMARY_TEXT : COLORS.MUTED_GREY,
+                                        border: `3px solid ${i === level ? COLORS.ACCENT_BLUE : COLORS.MUTED_GREY + '50'}`,
+                                        transition: 'all 0.2s',
+                                    }}
+                                    onClick={() => updateLevel(i)}
+                                    aria-label={`Set guidance detail to level ${i}`}
+                                >
+                                    {i}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 11. Help and Support Screen
+        const HelpAndSupportScreen = ({ onBack }) => (
+            <div className="p-5 space-y-6">
+                <BackButton onClick={onBack} />
+                <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Help & Support</h1>
+
+                <SettingsLink label="Quick Start Tutorial" icon={'CheckCircle'} onClick={() => alert('Opening tutorial videos... (Simulated)')} />
+                <SettingsLink label="Frequently Asked Questions" icon={'Volume2'} onClick={() => alert('Opening FAQ document... (Simulated)')} />
+                <SettingsLink label="Report Issue/Bug" icon={'XCircle'} onClick={() => alert('Opening bug submission form... (Simulated)')} />
+
+                <div className="p-5 rounded-xl space-y-2 mt-8" style={{ backgroundColor: COLORS.BACKGROUND_CARD }}>
+                    <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>App Version: 1.2.0</p>
+                    <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>Last Updated: Oct 2025</p>
+                </div>
+            </div>
+        );
+
+        // 12. App Data & Storage Screen (NEW PAGE)
+        const AppDataScreen = ({ onBack, onNavigate }) => (
+            <div className="p-5 space-y-6">
+                <BackButton onClick={onBack} />
+                <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>App Data & Storage</h1>
+
+                <div className="p-5 rounded-xl space-y-2" style={{ backgroundColor: COLORS.BACKGROUND_CARD }}>
+                    <h2 className="text-xl font-medium" style={{ color: COLORS.PRIMARY_TEXT }}>Storage Usage</h2>
+                    <div className="w-full h-4 rounded-full" style={{ backgroundColor: COLORS.BACKGROUND_BASE }}>
+                        <div className="h-full rounded-full" style={{ width: '40%', backgroundColor: COLORS.ACCENT_BLUE }}></div>
+                    </div>
+                    <p className="text-base" style={{ color: COLORS.MUTED_GREY }}>40% Used (2.4 GB / 6 GB)</p>
+                </div>
+
+                <SettingsLink label="Manage Subscriptions" icon={'CreditCard'} onClick={() => onNavigate('billing')} />
+
+                <button
+                    className="w-full py-5 mt-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                    style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.ALERT_RED }}
+                    onClick={() => alert('Clearing Cache... (Simulated Haptic Feedback)')}
+                >
+                    Clear Cache (150 MB)
+                </button>
+            </div>
+        );
+
+        // 13. Subscription/Billing Screen (NEW PAGE)
+        const BillingScreen = ({ onBack }) => (
+            <div className="p-5 space-y-6">
+                <BackButton onClick={onBack} />
+                <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Subscription</h1>
+
+                <div className="p-6 rounded-xl" style={{ backgroundColor: COLORS.BACKGROUND_CARD }}>
+                    <h2 className="text-2xl font-semibold" style={{ color: COLORS.ACCENT_BLUE }}>Atlas Guide Premium</h2>
+                    <p className="text-lg" style={{ color: COLORS.PRIMARY_TEXT }}>Active until: Nov 25, 2026</p>
+                    <p className="text-base mt-2" style={{ color: COLORS.MUTED_GREY }}>Includes: Enhanced Obstacle Alerts, Unlimited AI Scan</p>
+                </div>
+
+                <SettingsLink label="Change Payment Method" icon={'CreditCard'} onClick={() => alert('Opening payment portal... (Simulated)')} />
+                <SettingsLink label="View Billing History" icon={'BookOpen'} onClick={() => alert('Loading past transactions... (Simulated)')} />
+
+                <button
+                    className="w-full py-5 mt-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                    style={{ backgroundColor: COLORS.BACKGROUND_CARD, color: COLORS.ALERT_RED }}
+                    onClick={() => alert('Cancelling subscription... (Simulated)')}
+                >
+                    Cancel Subscription
+                </button>
+            </div>
+        );
+
+
+        // 14. Emergency Contact Management Screen
+        const EmergencyContactScreen = ({ onBack }) => {
+            const contacts = [
+                { name: 'Dr. Emily Chen', relationship: 'Primary Doctor', phone: '...9012' },
+                { name: 'Mark Doe', relationship: 'Spouse', phone: '...3456' },
+            ];
+
+            return (
+                <div className="p-5 space-y-6">
+                    <BackButton onClick={onBack} />
+                    <h1 className="text-3xl font-bold pt-8" style={{ color: COLORS.PRIMARY_TEXT }}>Emergency Contacts</h1>
+
+                    <p className="text-lg pb-4" style={{ color: COLORS.MUTED_GREY }}>These contacts are called immediately when the EMERGENCY CALL button is pressed.</p>
+
+                    {contacts.map((contact, index) => (
+                        <div key={index} className="p-5 rounded-xl border-l-4" style={{ backgroundColor: COLORS.BACKGROUND_CARD, borderColor: COLORS.ACCENT_BLUE }}>
+                            <p className="text-xl font-semibold" style={{ color: COLORS.PRIMARY_TEXT }}>{contact.name}</p>
+                            <p className="text-base" style={{ color: COLORS.ACCENT_BLUE }}>{contact.relationship} ({contact.phone})</p>
+                            <button
+                                className="mt-3 text-lg font-semibold"
+                                style={{ color: COLORS.ALERT_RED }}
+                                onClick={() => alert(`Removing ${contact.name}... (Simulated)`)}
+                                aria-label={`Remove ${contact.name} from emergency contacts`}
+                            >
+                                Remove Contact
+                            </button>
+                        </div>
+                    ))}
+
+                    <button
+                        className="w-full py-5 mt-6 rounded-xl text-xl font-bold transition-transform duration-150 active:scale-95"
+                        style={{ backgroundColor: COLORS.ACCENT_BLUE, color: COLORS.PRIMARY_TEXT }}
+                        onClick={() => {
+                            alert('Opening "Add New Contact" form... (Simulated)');
+                        }}
+                    >
+                        + Add New Contact
+                    </button>
+                </div>
+            );
+        };
+
+
+        // Bottom Navigation Bar Component
+        const BottomNavigation = ({ activeTab, onTabChange }) => {
+            const tabs = [
+                { key: 'navigate', icon: 'Navigation', label: 'Navigate' },
+                { key: 'saved', icon: 'Bookmark', label: 'Saved' },
+                { key: 'scan', icon: 'Camera', label: 'Vision Scan' },
+                { key: 'settings', icon: 'Settings', label: 'Settings' },
+            ];
+
+            return (
+                <div
+                    className="flex justify-around items-center absolute bottom-0 left-0 right-0 h-24 pt-4"
+                    style={{
+                        backgroundColor: COLORS.BACKGROUND_CARD,
+                        borderTop: `1px solid ${COLORS.MUTED_GREY}30`,
+                        boxShadow: '0 -10px 30px rgba(0, 0, 0, 0.5)'
+                    }}
+                    role="tablist"
+                >
+                    {tabs.map((tab) => {
+                        const isActive = activeTab === tab.key;
+                        const color = isActive ? COLORS.ACCENT_BLUE : COLORS.MUTED_GREY;
+                        const iconName = tab.icon;
+
+                        return (
+                            <button
+                                key={tab.key}
+                                className="flex flex-col items-center space-y-1 transition-all duration-200 active:scale-95"
+                                onClick={() => onTabChange(tab.key)}
+                                style={{ color: color, minWidth: '70px', minHeight: '48px', padding: '8px' }}
+                                role="tab"
+                                aria-selected={isActive}
+                                aria-label={tab.label}
+                            >
+                                {IconWrapper(iconName, { size: 26 })}
+                                <span className="text-xs font-medium">{tab.label}</span>
+                                {isActive && <div className="h-0.5 w-8 rounded-full mt-1" style={{ backgroundColor: COLORS.ACCENT_BLUE }}></div>}
+                            </button>
+                        );
+                    })}
+                </div>
+            );
+        };
+
+
+        // --- MAIN APP COMPONENT (The Router) ---
+
+        function App() {
+            const [activeTab, setActiveTab] = useState('settings');
+            const [navigateState, setNavigateState] = useState('main');
+            const [settingsSubState, setSettingsSubState] = useState('main');
+
+            const handleTabChange = (tab) => {
+                setActiveTab(tab);
+                setNavigateState('main');
+
+                // Ensure Settings tab always shows the main list first
+                if (tab === 'settings') {
+                    setSettingsSubState('main');
+                } else {
+                    setSettingsSubState('main');
+                }
+            };
+
+            // Helper functions for navigation flow
+            const handleStartPlanning = () => setNavigateState('route');
+            const handleStartActiveNavigation = () => setNavigateState('active');
+            const handleEndTrip = () => setNavigateState('main');
+            const handleCancelNavigation = () => setNavigateState('main');
+            const handleBackSettings = () => setSettingsSubState('main');
+
+            // Custom back navigation for nested screens
+            const handleBackProfile = () => setSettingsSubState('profile');
+            const handleBackData = () => setSettingsSubState('data');
+
+
+            // Dynamic Title Generation
+            const getHeaderTitle = () => {
+                if (activeTab === 'navigate') {
+                    if (navigateState === 'active') return 'Active Guidance';
+                    if (navigateState === 'route') return 'Route Planning';
+                    return 'Navigator Home';
+                }
+                if (activeTab === 'saved') return 'Saved Places';
+                if (activeTab === 'scan') return 'Vision Scanner';
+                if (activeTab === 'settings') {
+                    switch (settingsSubState) {
+                        case 'main': return 'App Settings';
+                        case 'profile': return 'User Profile';
+                        case 'safety': return 'Safety & Emergency';
+                        case 'verbosity': return 'Voice Guidance';
+                        case 'help': return 'Help & Support';
+                        case 'emergency': return 'Manage Contacts';
+                        case 'data': return 'App Data & Storage';
+                        case 'billing': return 'Subscription';
+                        case 'privacy': return 'Privacy Settings';
+                        default: return 'Settings';
+                    }
+                }
+                return 'Atlas Guide';
+            };
+
+            // Render logic for Settings pages
+            const renderSettingsContent = () => {
+                switch (settingsSubState) {
+                    case 'main': return <SettingsMainScreen onNavigate={setSettingsSubState} />;
+                    case 'profile': return <ProfileScreen onBack={handleBackSettings} onNavigate={setSettingsSubState} />;
+                    case 'privacy': return <PrivacySettingsScreen onBack={handleBackProfile} />;
+                    case 'safety': return <SafetySettingsScreen onBack={handleBackSettings} />;
+                    case 'verbosity': return <GuidanceVerbosityScreen onBack={handleBackSettings} />;
+                    case 'help': return <HelpAndSupportScreen onBack={handleBackSettings} />;
+                    case 'emergency': return <EmergencyContactScreen onBack={handleBackSettings} />;
+                    case 'data': return <AppDataScreen onBack={handleBackSettings} onNavigate={setSettingsSubState} />;
+                    case 'billing': return <BillingScreen onBack={handleBackData} />;
+                    default: return <SettingsMainScreen onNavigate={setSettingsSubState} />;
+                }
+            };
+
+            // Logic to determine if a Back Button is needed
+            const showBackButton = (activeTab === 'settings' && settingsSubState !== 'main') || (activeTab === 'navigate' && navigateState === 'route');
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: COLORS.BACKGROUND_BASE }}>
+                    {/* Mobile Phone Frame */}
+                    <div
+                        className="relative flex flex-col overflow-hidden"
+                        style={{
+                            width: '390px',
+                            height: '844px',
+                            backgroundColor: COLORS.BACKGROUND_CARD,
+                            borderRadius: '48px',
+                            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5), inset 0 0 0 8px #0A0D14'
+                        }}
+                    >
+                        {/* Status Bar */}
+                        <StatusBar />
+
+                        {/* Header (Title is dynamically set) */}
+                        <header className="px-5 pt-4 pb-3 flex-shrink-0 relative">
+                            {/* Back button appears on sub-screens in Settings or if on Route Planning */}
+                            {showBackButton && (
+                                <BackButton onClick={
+                                    activeTab === 'navigate' && navigateState === 'route' ? handleCancelNavigation :
+                                    settingsSubState === 'privacy' ? handleBackProfile :
+                                    settingsSubState === 'billing' ? handleBackData :
+                                    handleBackSettings
+                                } />
+                            )}
+                            <h1
+                                className="text-center text-3xl font-bold"
+                                style={{ color: COLORS.PRIMARY_TEXT, fontFamily: 'system-ui, -apple-system, sans-serif' }}
+                                aria-live="polite"
+                            >
+                                {getHeaderTitle()}
+                            </h1>
+                        </header>
+
+                        {/* Main Content - Scrollable area */}
+                        <main className="flex-1 overflow-y-auto" style={{ position: 'relative' }}>
+
+                            {activeTab === 'navigate' && (
+                                <div className="h-full pb-24">
+                                    {navigateState === 'main' && (<NavigateMainScreen onStartPlanning={handleStartPlanning} />)}
+                                    {navigateState === 'route' && (<RoutePlanningScreen onStartActiveNavigation={handleStartActiveNavigation} onCancel={handleCancelNavigation} />)}
+                                    {navigateState === 'active' && (<ActiveNavigationScreen onEndTrip={handleEndTrip} />)}
+                                </div>
+                            )}
+
+                            {activeTab === 'saved' && (<div className="h-full pb-24"><SavedDestinationsScreen /></div>)}
+                            {activeTab === 'scan' && (<div className="h-full pb-24"><ScanVisionScreen /></div>)}
+
+                            {activeTab === 'settings' && (<div className="h-full pb-24">{renderSettingsContent()}</div>)}
+                        </main>
+
+                        {/* Fixed Bottom Navigation */}
+                        <BottomNavigation
+                            activeTab={activeTab}
+                            onTabChange={handleTabChange}
+                        />
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the main application
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    };
+
+    // Execute the starting logic after the window is fully loaded
+    window.onload = startApp;
+</script>
+
+</body>
+</html>
